@@ -9,15 +9,15 @@ from parallel_env import VectorizedDoomEnv
 from model import SpikingQNetwork
 
 # --- Parallel Hyperparameters ---
-NUM_ENVS = 4           # Run 4 games at the exact same time!
-BATCH_SIZE = 64
+NUM_ENVS = 32          # Run 32 games at the exact same time! (For Ada Server)
+BATCH_SIZE = 128       # Larger batch for more stable GPU training
 GAMMA = 0.99           
 EPSILON_START = 1.0    
-EPSILON_END = 0.1      
-EPSILON_DECAY = 0.998  
-LR = 0.001             
-MEMORY_SIZE = 20000    
-TOTAL_EPISODES = 500   
+EPSILON_END = 0.05     # Let it explore a bit longer, but exploit more at the end
+EPSILON_DECAY = 0.9995 # Slower decay since we are training for 20000 episodes
+LR = 0.0005            # Slightly smaller learning rate for stability
+MEMORY_SIZE = 100000   # Massive memory buffer (Server has 512GB RAM)
+TOTAL_EPISODES = 20000 # Massive training scale
 
 class ReplayBuffer:
     def __init__(self, capacity):
@@ -43,12 +43,16 @@ class ReplayBuffer:
         return len(self.buffer)
 
 def train_parallel():
+    # 0. GPU Support Check!
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using Device: {device}")
+    
     print(f"Initializing {NUM_ENVS} parallel environments...")
     # NOTE: Render must be False for parallel environments!
     env = VectorizedDoomEnv(num_envs=NUM_ENVS, config_file="basic.cfg")
     
-    model = SpikingQNetwork()
-    target_model = SpikingQNetwork()
+    model = SpikingQNetwork().to(device)
+    target_model = SpikingQNetwork().to(device)
     target_model.load_state_dict(model.state_dict())
     
     optimizer = optim.Adam(model.parameters(), lr=LR)
@@ -56,7 +60,7 @@ def train_parallel():
     memory = ReplayBuffer(MEMORY_SIZE)
     
     epsilon = EPSILON_START
-    states = env.reset() # Shape: (4, 1, 64, 64)
+    states = env.reset().to(device) # Shape: (4, 1, 64, 64)
     
     print("======================================")
     print("Starting PARALLEL SNN Training on DOOM...")
@@ -84,7 +88,8 @@ def train_parallel():
                 actions = torch.argmax(q_values, dim=1).tolist()
                 
         # 2. Step all environments in parallel
-        next_states, rewards, dones = env.step(actions)
+        next_states_cpu, rewards, dones = env.step(actions)
+        next_states = next_states_cpu.to(device)
         
         # Track rewards and count completed episodes
         for i in range(NUM_ENVS):
@@ -105,6 +110,13 @@ def train_parallel():
         # 4. Train the SNN
         if len(memory) >= BATCH_SIZE:
             s_batch, a_batch, r_batch, ns_batch, d_batch = memory.sample(BATCH_SIZE)
+            
+            # Move memory batch to GPU
+            s_batch = s_batch.to(device)
+            a_batch = a_batch.to(device)
+            r_batch = r_batch.to(device)
+            ns_batch = ns_batch.to(device)
+            d_batch = d_batch.to(device)
             
             _, mem_current = model(s_batch, num_steps=10)
             q_values = mem_current.mean(dim=0)
