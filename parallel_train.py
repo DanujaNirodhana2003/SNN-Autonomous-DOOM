@@ -17,7 +17,7 @@ EPSILON_END = 0.05     # Let it explore a bit longer, but exploit more at the en
 EPSILON_DECAY = 0.9995 # Slower decay since we are training for 20000 episodes
 LR = 0.0005            # Slightly smaller learning rate for stability
 MEMORY_SIZE = 100000   # Massive memory buffer (Server has 512GB RAM)
-TOTAL_EPISODES = 20000 # Massive training scale
+TOTAL_EPISODES = 50000 # Increased to 50,000 since the user wants to leave it running
 
 class ReplayBuffer:
     def __init__(self, capacity):
