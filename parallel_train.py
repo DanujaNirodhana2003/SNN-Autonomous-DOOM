@@ -53,6 +53,13 @@ def train_parallel():
     
     model = SpikingQNetwork().to(device)
     target_model = SpikingQNetwork().to(device)
+    
+    # --- Multi-GPU Support ---
+    if torch.cuda.device_count() > 1:
+        print(f"Awesome! Using {torch.cuda.device_count()} GPUs simultaneously!")
+        model = nn.DataParallel(model)
+        target_model = nn.DataParallel(target_model)
+        
     target_model.load_state_dict(model.state_dict())
     
     optimizer = optim.Adam(model.parameters(), lr=LR)
@@ -143,7 +150,10 @@ def train_parallel():
             
     pbar.close()        
     print("Parallel Training Complete! Saving model to snn_parallel_model.pth...")
-    torch.save(model.state_dict(), "snn_parallel_model.pth")
+    
+    # Save the model properly regardless of DataParallel
+    model_to_save = model.module if isinstance(model, nn.DataParallel) else model
+    torch.save(model_to_save.state_dict(), "snn_parallel_model.pth")
     env.close()
 
 if __name__ == "__main__":
