@@ -21,7 +21,7 @@ def test_trained_agent():
     
     # 3. Create the environment WITH the Window open so we can watch!
     print("Starting VizDoom...")
-    env = DoomEnvironment(config_file="basic.cfg", render=True)
+    env = DoomEnvironment(config_file="defend_the_center.cfg", render=True)
     
     # 4. Let the AI play 5 games
     for episode in range(5):

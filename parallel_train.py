@@ -49,9 +49,17 @@ def train_parallel():
     
     print(f"Initializing {NUM_ENVS} parallel environments...")
     # NOTE: Render must be False for parallel environments!
-    env = VectorizedDoomEnv(num_envs=NUM_ENVS, config_file="basic.cfg")
+    env = VectorizedDoomEnv(num_envs=NUM_ENVS, config_file="defend_the_center.cfg")
     
     model = SpikingQNetwork().to(device)
+    
+    # TRANSFER LEARNING: Load pre-trained weights from basic scenario
+    try:
+        model.load_state_dict(torch.load("snn_basic_model.pth", map_location=device, weights_only=True))
+        print("Transfer Learning: Successfully loaded weights from 'snn_basic_model.pth'!")
+    except Exception as e:
+        print(f"Notice: Starting from scratch. Could not load pre-trained weights: {e}")
+        
     target_model = SpikingQNetwork().to(device)
     
     # --- Multi-GPU Support ---
