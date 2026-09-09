@@ -14,10 +14,10 @@ BATCH_SIZE = 128       # Larger batch for more stable GPU training
 GAMMA = 0.99           
 EPSILON_START = 1.0    
 EPSILON_END = 0.05     # Let it explore a bit longer, but exploit more at the end
-EPSILON_DECAY = 0.9995 # Slower decay since we are training for 20000 episodes
+EPSILON_DECAY = 0.9999 # EXTREMELY slow decay so it explores turning for a long time
 LR = 0.0005            # Slightly smaller learning rate for stability
 MEMORY_SIZE = 100000   # Massive memory buffer (Server has 512GB RAM)
-TOTAL_EPISODES = 50000 # Increased to 50,000 since the user wants to leave it running
+TOTAL_EPISODES = 20000 # Reduced to 20k for a quicker test
 
 class ReplayBuffer:
     def __init__(self, capacity):
@@ -51,12 +51,16 @@ def train_parallel():
     # NOTE: Render must be False for parallel environments!
     env = VectorizedDoomEnv(num_envs=NUM_ENVS, config_file="defend_the_center.cfg")
     
-    model = SpikingQNetwork().to(device)
-    
-    # TRANSFER LEARNING: Load pre-trained weights from basic scenario
+    # TRANSFER LEARNING: Load pre-trained weights from basic scenario (Partial Transfer)
     try:
-        model.load_state_dict(torch.load("snn_basic_model.pth", map_location=device, weights_only=True))
-        print("Transfer Learning: Successfully loaded weights from 'snn_basic_model.pth'!")
+        # Load the visual layers but ignore any size mismatches just in case
+        model.load_state_dict(torch.load("snn_basic_model.pth", map_location=device, weights_only=True), strict=False)
+        
+        # RESET the final decision layer (fc2) so it forgets the old 'always shoot' habit
+        nn.init.xavier_uniform_(model.fc2.weight)
+        nn.init.zeros_(model.fc2.bias)
+        
+        print("Transfer Learning: Loaded Visual Layers. Reset Decision Layer (fc2)!")
     except Exception as e:
         print(f"Notice: Starting from scratch. Could not load pre-trained weights: {e}")
         
