@@ -17,7 +17,7 @@ EPSILON_END = 0.05     # Let it explore a bit longer, but exploit more at the en
 EPSILON_DECAY = 0.9999 # EXTREMELY slow decay so it explores turning for a long time
 LR = 0.0005            # Slightly smaller learning rate for stability
 MEMORY_SIZE = 100000   # Massive memory buffer (Server has 512GB RAM)
-TOTAL_EPISODES = 20000 # Reduced to 20k for a quicker test
+TOTAL_EPISODES = 100000 # Increased to 100k for proper long-range aiming training
 
 class ReplayBuffer:
     def __init__(self, capacity):
