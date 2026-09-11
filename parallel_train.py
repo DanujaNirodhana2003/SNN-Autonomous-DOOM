@@ -93,7 +93,7 @@ def train_parallel():
     
     # Create a progress bar to see real-time updates!
     from tqdm import tqdm
-    pbar = tqdm(total=TOTAL_EPISODES, desc="Training Progress")
+    pbar = tqdm(total=TOTAL_EPISODES, desc="Training Progress", mininterval=60.0)
     
     # We train until we hit 500 total episodes across all parallel games
     while episodes_completed < TOTAL_EPISODES:
@@ -121,6 +121,11 @@ def train_parallel():
                 # Update the progress bar and show the latest reward/epsilon
                 pbar.update(1)
                 pbar.set_postfix({'Reward': f"{total_rewards[i]:.1f}", 'Eps': f"{epsilon:.2f}"})
+                
+                # Checkpoint saving every 5000 episodes to prevent data loss
+                if episodes_completed % 5000 == 0:
+                    model_to_save = model.module if isinstance(model, nn.DataParallel) else model
+                    torch.save(model_to_save.state_dict(), "snn_checkpoint.pth")
                 
                 total_rewards[i] = 0.0 # Reset tracking for this env
                 
