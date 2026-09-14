@@ -20,6 +20,16 @@ class DoomEnvironment:
         self.game.set_screen_format(vzd.ScreenFormat.GRAY8) 
         self.game.set_screen_resolution(vzd.ScreenResolution.RES_160X120)
         
+        # --- Reward Shaping: Add extra game variables we need to track ---
+        # These might already be in the .cfg, but adding them programmatically
+        # ensures it works everywhere (Kaggle, Server, Laptop)
+        self.game.add_available_game_variable(vzd.GameVariable.HITCOUNT)
+        self.game.add_available_game_variable(vzd.GameVariable.KILLCOUNT)
+        self.game.add_available_game_variable(vzd.GameVariable.DAMAGECOUNT)
+        
+        # Stronger death penalty for reward shaping
+        self.game.set_death_penalty(5.0)
+        
         self.game.init()
         
         # In basic.cfg, we only need 3 actions: Turn Left, Turn Right, Shoot
@@ -41,12 +51,10 @@ class DoomEnvironment:
         """Starts a new episode and returns the first frame."""
         self.game.new_episode()
         
-        # Reset reward shaping trackers to initial game values
-        game_vars = self.game.get_state().game_variables
-        # Game variables order from .cfg: AMMO2, HEALTH, HITCOUNT, KILLCOUNT, DAMAGECOUNT
-        self.prev_ammo = game_vars[0]       # AMMO2
-        self.prev_hitcount = game_vars[2]   # HITCOUNT
-        self.prev_killcount = game_vars[3]  # KILLCOUNT
+        # Reset reward shaping trackers using named variable access
+        self.prev_ammo = self.game.get_game_variable(vzd.GameVariable.AMMO2)
+        self.prev_hitcount = self.game.get_game_variable(vzd.GameVariable.HITCOUNT)
+        self.prev_killcount = self.game.get_game_variable(vzd.GameVariable.KILLCOUNT)
         
         return self.get_state()
 
@@ -64,11 +72,10 @@ class DoomEnvironment:
         shaped_reward = base_reward
         
         if not done:
-            # Read current game variables
-            game_vars = self.game.get_state().game_variables
-            current_ammo = game_vars[0]       # AMMO2
-            current_hitcount = game_vars[2]   # HITCOUNT
-            current_killcount = game_vars[3]  # KILLCOUNT
+            # Read current game variables by NAME (no index issues!)
+            current_ammo = self.game.get_game_variable(vzd.GameVariable.AMMO2)
+            current_hitcount = self.game.get_game_variable(vzd.GameVariable.HITCOUNT)
+            current_killcount = self.game.get_game_variable(vzd.GameVariable.KILLCOUNT)
             
             # --- Reward Shaping Signals ---
             
