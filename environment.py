@@ -31,28 +31,76 @@ class DoomEnvironment:
         
         # Resize to 64x64 for the SNN to keep the network small and fast
         self.resize = T.Resize((64, 64), antialias=True)
+        
+        # --- Reward Shaping: Track game variables ---
+        self.prev_hitcount = 0
+        self.prev_ammo = 0
+        self.prev_killcount = 0
 
     def reset(self):
         """Starts a new episode and returns the first frame."""
         self.game.new_episode()
+        
+        # Reset reward shaping trackers to initial game values
+        game_vars = self.game.get_state().game_variables
+        # Game variables order from .cfg: AMMO2, HEALTH, HITCOUNT, KILLCOUNT, DAMAGECOUNT
+        self.prev_ammo = game_vars[0]       # AMMO2
+        self.prev_hitcount = game_vars[2]   # HITCOUNT
+        self.prev_killcount = game_vars[3]  # KILLCOUNT
+        
         return self.get_state()
 
     def step(self, action_idx):
         """
-        Executes an action in the game.
+        Executes an action in the game with REWARD SHAPING.
         :param action_idx: Integer 0, 1, or 2
-        :return: (next_state, reward, is_done)
+        :return: (next_state, shaped_reward, is_done)
         """
-        reward = self.game.make_action(self.actions[action_idx])
+        # Execute the action and get the base reward from the game engine
+        base_reward = self.game.make_action(self.actions[action_idx])
         done = self.game.is_episode_finished()
         
-        if done:
+        # Start with the base reward from the game (kill/death rewards from .cfg)
+        shaped_reward = base_reward
+        
+        if not done:
+            # Read current game variables
+            game_vars = self.game.get_state().game_variables
+            current_ammo = game_vars[0]       # AMMO2
+            current_hitcount = game_vars[2]   # HITCOUNT
+            current_killcount = game_vars[3]  # KILLCOUNT
+            
+            # --- Reward Shaping Signals ---
+            
+            # 1. HIT REWARD: Bullet hit an enemy! (+2.0 per hit)
+            hits = current_hitcount - self.prev_hitcount
+            if hits > 0:
+                shaped_reward += 2.0 * hits
+            
+            # 2. MISS PENALTY: Ammo was used but didn't hit anything (-0.1)
+            ammo_used = self.prev_ammo - current_ammo
+            if ammo_used > 0 and hits == 0:
+                shaped_reward -= 0.1 * ammo_used
+            
+            # 3. KILL BONUS: Enemy was killed! (+5.0 per kill)
+            kills = current_killcount - self.prev_killcount
+            if kills > 0:
+                shaped_reward += 5.0 * kills
+            
+            # 4. SURVIVAL REWARD: Still alive = keep scanning! (+0.01)
+            shaped_reward += 0.01
+            
+            # Update trackers for the next step
+            self.prev_ammo = current_ammo
+            self.prev_hitcount = current_hitcount
+            self.prev_killcount = current_killcount
+            
+            next_state = self.get_state()
+        else:
             # If the episode is over, return a blank screen
             next_state = torch.zeros((1, 64, 64), dtype=torch.float32)
-        else:
-            next_state = self.get_state()
             
-        return next_state, reward, done
+        return next_state, shaped_reward, done
 
     def get_state(self):
         """Grabs the current screen, resizes, and normalizes it."""

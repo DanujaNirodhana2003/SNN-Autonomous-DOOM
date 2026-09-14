@@ -27,19 +27,17 @@ class VectorizedDoomEnv:
         """
         Takes a list of actions and applies them to all environments at once.
         Auto-resets any environment that finishes an episode.
+        Uses the reward-shaped step() from DoomEnvironment.
         """
         def _step_single(env, action):
-            # Make action and get reward
-            reward = env.game.make_action(env.actions[action])
-            done = env.game.is_episode_finished()
+            # Use the environment's step() which includes reward shaping!
+            next_state, shaped_reward, done = env.step(action)
             
             # If the episode finished, automatically restart it
             if done:
                 next_state = env.reset()
-            else:
-                next_state = env.get_state()
                 
-            return next_state, reward, done
+            return next_state, shaped_reward, done
 
         # Run all steps in parallel threads
         futures = [self.executor.submit(_step_single, env, action) for env, action in zip(self.envs, actions)]

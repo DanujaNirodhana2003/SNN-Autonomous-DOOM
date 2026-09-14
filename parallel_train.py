@@ -53,18 +53,11 @@ def train_parallel():
     
     model = SpikingQNetwork().to(device)
     
-    # TRANSFER LEARNING: Load pre-trained weights from basic scenario (Partial Transfer)
-    try:
-        # Load the visual layers but ignore any size mismatches just in case
-        model.load_state_dict(torch.load("snn_basic_model.pth", map_location=device, weights_only=True), strict=False)
+    # NOTE: Starting from scratch! The reward structure has changed completely
+    # (Reward Shaping: hit bonus, miss penalty, kill bonus, survival reward)
+    # so old weights would confuse the agent.
+    print("Starting fresh training with Reward Shaping!")
         
-        # RESET the final decision layer (fc2) so it forgets the old 'always shoot' habit
-        nn.init.xavier_uniform_(model.fc2.weight)
-        nn.init.zeros_(model.fc2.bias)
-        
-        print("Transfer Learning: Loaded Visual Layers. Reset Decision Layer (fc2)!")
-    except Exception as e:
-        print(f"Notice: Starting from scratch. Could not load pre-trained weights: {e}")
         
     target_model = SpikingQNetwork().to(device)
     
