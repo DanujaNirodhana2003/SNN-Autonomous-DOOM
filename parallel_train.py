@@ -9,7 +9,7 @@ from parallel_env import VectorizedDoomEnv
 from model import SpikingQNetwork
 
 # --- Parallel Hyperparameters ---
-NUM_ENVS = 32          # Run 32 games at the exact same time! (For Ada Server)
+NUM_ENVS = 16          # 16 parallel games (balanced for Kaggle CPU + GPU)
 BATCH_SIZE = 128       # Larger batch for more stable GPU training
 GAMMA = 0.99           
 EPSILON_START = 1.0    

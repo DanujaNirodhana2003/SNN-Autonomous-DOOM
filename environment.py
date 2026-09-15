@@ -2,11 +2,18 @@ import vizdoom as vzd
 import numpy as np
 import torch
 import torchvision.transforms as T
+from collections import deque
+
+# Number of frames to stack together for temporal awareness
+FRAME_STACK = 4
+# Resolution for the SNN input
+RESOLUTION = 84
 
 class DoomEnvironment:
     def __init__(self, config_file="basic.cfg", render=True):
         """
         Wrapper for VizDoom tailored for Spiking Neural Networks.
+        Now with Frame Stacking and Reward Shaping!
         :param config_file: The scenario file to load (default: basic.cfg)
         :param render: If True, the game window will be visible (good for testing, slow for training)
         """
@@ -39,8 +46,11 @@ class DoomEnvironment:
             [0, 0, 1]  # Action 2: Shoot
         ]
         
-        # Resize to 64x64 for the SNN to keep the network small and fast
-        self.resize = T.Resize((64, 64), antialias=True)
+        # Resize to 84x84 for better detail on distant enemies
+        self.resize = T.Resize((RESOLUTION, RESOLUTION), antialias=True)
+        
+        # --- Frame Stacking: Keep the last 4 frames for motion awareness ---
+        self.frame_buffer = deque(maxlen=FRAME_STACK)
         
         # --- Reward Shaping: Track game variables ---
         self.prev_hitcount = 0
@@ -48,7 +58,7 @@ class DoomEnvironment:
         self.prev_killcount = 0
 
     def reset(self):
-        """Starts a new episode and returns the first frame."""
+        """Starts a new episode and returns the first 4 stacked frames."""
         self.game.new_episode()
         
         # Reset reward shaping trackers using named variable access
@@ -56,13 +66,20 @@ class DoomEnvironment:
         self.prev_hitcount = self.game.get_game_variable(vzd.GameVariable.HITCOUNT)
         self.prev_killcount = self.game.get_game_variable(vzd.GameVariable.KILLCOUNT)
         
-        return self.get_state()
+        # Get the first frame and fill the entire buffer with it
+        # (At the start, all 4 frames are the same — no motion yet)
+        first_frame = self._get_single_frame()
+        for _ in range(FRAME_STACK):
+            self.frame_buffer.append(first_frame)
+        
+        return self._get_stacked_frames()
 
     def step(self, action_idx):
         """
         Executes an action in the game with REWARD SHAPING.
+        Returns 4 stacked frames for temporal awareness.
         :param action_idx: Integer 0, 1, or 2
-        :return: (next_state, shaped_reward, is_done)
+        :return: (stacked_state, shaped_reward, is_done)
         """
         # Execute the action and get the base reward from the game engine
         base_reward = self.game.make_action(self.actions[action_idx])
@@ -102,15 +119,19 @@ class DoomEnvironment:
             self.prev_hitcount = current_hitcount
             self.prev_killcount = current_killcount
             
-            next_state = self.get_state()
+            # Add the new frame to the buffer
+            new_frame = self._get_single_frame()
+            self.frame_buffer.append(new_frame)
+            
+            next_state = self._get_stacked_frames()
         else:
-            # If the episode is over, return a blank screen
-            next_state = torch.zeros((1, 64, 64), dtype=torch.float32)
+            # If the episode is over, return blank stacked frames
+            next_state = torch.zeros((FRAME_STACK, RESOLUTION, RESOLUTION), dtype=torch.float32)
             
         return next_state, shaped_reward, done
 
-    def get_state(self):
-        """Grabs the current screen, resizes, and normalizes it."""
+    def _get_single_frame(self):
+        """Grabs the current screen, resizes, and normalizes it. Returns shape (1, 84, 84)."""
         state = self.game.get_state()
         
         # The screen buffer is (120, 160) because we set GRAY8
@@ -119,10 +140,14 @@ class DoomEnvironment:
         # Convert to PyTorch tensor and add a channel dimension: (1, 120, 160)
         img_tensor = torch.from_numpy(img).float().unsqueeze(0)
         
-        # Resize to (1, 64, 64) and normalize pixels to be between 0.0 and 1.0
+        # Resize to (1, 84, 84) and normalize pixels to be between 0.0 and 1.0
         img_resized = self.resize(img_tensor) / 255.0
         
         return img_resized
+
+    def _get_stacked_frames(self):
+        """Stacks the last 4 frames into a single tensor. Returns shape (4, 84, 84)."""
+        return torch.cat(list(self.frame_buffer), dim=0)
 
     def close(self):
         """Safely shuts down the game engine."""
@@ -130,14 +155,15 @@ class DoomEnvironment:
 
 if __name__ == "__main__":
     # Test the environment
-    print("Testing DoomEnvironment...")
+    print("Testing DoomEnvironment with Frame Stacking...")
     env = DoomEnvironment(render=True)
     state = env.reset()
     
-    print(f"Initial State Shape: {state.shape}") # Should be (1, 64, 64)
+    print(f"Initial State Shape: {state.shape}") # Should be (4, 84, 84)
     print("Executing a random action...")
     
     next_state, reward, done = env.step(1) # Turn Right
+    print(f"Next State Shape: {next_state.shape}") # Should be (4, 84, 84)
     print(f"Reward Received: {reward}")
     
     env.close()
